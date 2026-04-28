@@ -1,26 +1,85 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700;1,800;1,900&display=swap");
+
 @import "tailwindcss";
 
+/* ─── Brand CSS Variables ─── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-primary:          #6C63FF;
+  --color-primary-light:    #8B83FF;
+  --color-primary-dark:     #5248E0;
+  --color-secondary:        #FF6584;
+  --color-secondary-light:  #FF8FA3;
+  --color-secondary-dark:   #E04E6B;
+  --color-dark-bg:          #0F0F1A;
+  --color-card-bg:          #1A1A2E;
+  --color-card-bg-hover:    #222240;
+  --color-text:             #E2E8F0;
+  --color-text-muted:       #94A3B8;
+  --color-text-dim:         #64748B;
+  --color-border:           #2D2D4A;
+  --color-surface:          #16162A;
+  --color-success:          #10B981;
+  --color-warning:          #F59E0B;
+  --color-error:            #EF4444;
 }
 
+/* ─── Tailwind v4 Theme ─── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background:    var(--color-dark-bg);
+  --color-foreground:    var(--color-text);
+  --color-primary:       var(--color-primary);
+  --color-primary-light: var(--color-primary-light);
+  --color-primary-dark:  var(--color-primary-dark);
+  --color-secondary:     var(--color-secondary);
+  --color-secondary-light: var(--color-secondary-light);
+  --color-secondary-dark:  var(--color-secondary-dark);
+  --color-card:          var(--color-card-bg);
+  --color-card-hover:    var(--color-card-bg-hover);
+  --color-muted:         var(--color-text-muted);
+  --color-dim:           var(--color-text-dim);
+  --color-border:        var(--color-border);
+  --color-surface:       var(--color-surface);
+  --color-success:       var(--color-success);
+  --color-warning:       var(--color-warning);
+  --color-error:         var(--color-error);
+  --font-heading:        "Playfair Display", serif;
+  --font-body:           "Inter", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* ─── Base ─── */
+html { scroll-behavior: smooth; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-dark-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* ─── Custom Scrollbar ─── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0F0F1A; }
+::-webkit-scrollbar-thumb {
+  background: #6C63FF;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: #8B83FF; }
+
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: #6C63FF #0F0F1A; }
+
+/* ─── Selection ─── */
+::selection { background-color: rgba(108, 99, 255, 0.3); color: #fff; }
+
+/* ─── Focus ─── */
+:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+/* ─── Shimmer keyframe (used by SkeletonCard) ─── */
+@keyframes shimmer {
+  0%   { background-position:  200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── Dash animation (used by ImageDropZone) ─── */
+@keyframes dash { to { stroke-dashoffset: -28; } }
