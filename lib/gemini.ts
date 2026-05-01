@@ -12,51 +12,46 @@ function chunkByWords(text: string, wordsPerChunk = 200): string[] {
   return chunks;
 }
 
-/* ── Summarise a single chunk ─────────────────────────────── */
-async function summariseChunk(
-  model: ReturnType<InstanceType<typeof GoogleGenerativeAI>["getGenerativeModel"]>,
-  chunk: string,
-  chunkIndex: number,
-  totalChunks: number
-): Promise<string> {
-  const prompt =
-    totalChunks === 1
-      ? `You are a professional blog editor. Summarise the following blog post section in 2-3 sentences. Be concise and capture the key point.\n\nSection:\n${chunk}`
-      : `You are a professional blog editor. This is part ${chunkIndex + 1} of ${totalChunks} of a blog post. Summarise this part in 2-3 sentences. Be concise and capture the key point.\n\nPart ${chunkIndex + 1}:\n${chunk}`;
-
-  const result = await model.generateContent(prompt);
-  return result.response.text().trim();
-}
-
 /* ── Main export ──────────────────────────────────────────── */
 export async function generateSummary(body: string): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
   const chunks = chunkByWords(body, 200);
 
-  // If the blog is short enough (≤ 200 words), summarise directly
+  /* Short blog — single call */
   if (chunks.length === 1) {
-    const prompt = `You are a professional blog editor for ThoughtNest, a premium blogging platform. Read the following blog post and write a compelling, engaging summary in exactly 200 words. Write in third person. Capture the key insights and make readers want to read the full post.
-
-Blog post:
-${body}`;
-    const result = await model.generateContent(prompt);
+    const result = await model.generateContent(
+      `You are a professional blog editor for ThoughtNest, a premium blogging platform. ` +
+        `Read the following blog post and write a compelling, engaging summary in exactly 200 words. ` +
+        `Write in third person. Capture the key insights and make readers want to read the full post.\n\n` +
+        `Blog post:\n${body}`
+    );
     return result.response.text().trim();
   }
 
-  // For longer blogs: summarise each 200-word chunk in parallel, then consolidate
+  /* Long blog — summarise each 200-word chunk in parallel, then consolidate */
   const chunkSummaries = await Promise.all(
-    chunks.map((chunk, i) => summariseChunk(model, chunk, i, chunks.length))
+    chunks.map(async (chunk, i) => {
+      const r = await model.generateContent(
+        `You are a professional blog editor. ` +
+          `This is part ${i + 1} of ${chunks.length} of a blog post. ` +
+          `Summarise this part in 2-3 sentences. Be concise and capture the key point.\n\n` +
+          `Part ${i + 1}:\n${chunk}`
+      );
+      return r.response.text().trim();
+    })
   );
 
-  // Final consolidation — produce one coherent 200-word summary of the whole blog
-  const consolidationPrompt = `You are a professional blog editor for ThoughtNest, a premium blogging platform. Below are summaries of each section of a blog post (the blog was split into ${chunks.length} parts of ~200 words each).
+  /* Final consolidation */
+  const result = await model.generateContent(
+    `You are a professional blog editor for ThoughtNest, a premium blogging platform. ` +
+      `Below are summaries of each section of a blog post ` +
+      `(the blog was split into ${chunks.length} parts of ~200 words each).\n\n` +
+      `Write ONE compelling, engaging summary of the ENTIRE blog post in exactly 200 words. ` +
+      `Write in third person. Capture the key insights across all sections and make readers want to read the full post. ` +
+      `Do not mention that this is a summary of summaries.\n\n` +
+      `Section summaries:\n` +
+      chunkSummaries.map((s, i) => `Part ${i + 1}: ${s}`).join("\n\n")
+  );
 
-Your task: Write ONE compelling, engaging summary of the ENTIRE blog post in exactly 200 words. Write in third person. Capture the key insights across all sections and make readers want to read the full post. Do not mention that this is a summary of summaries — write as if you read the whole post.
-
-Section summaries:
-${chunkSummaries.map((s, i) => `Part ${i + 1}: ${s}`).join("\n\n")}`;
-
-  const finalResult = await model.generateContent(consolidationPrompt);
-  return finalResult.response.text().trim();
+  return result.response.text().trim();
 }
