@@ -1,6 +1,36 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+/* ── Direct REST call to Gemini v1 (not v1beta) ────────────
+   The @google/generative-ai SDK hardcodes v1beta which is
+   missing newer models. We call the v1 REST API directly
+   so the model name resolves correctly.
+──────────────────────────────────────────────────────────── */
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const GEMINI_API_URL =
+  "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent";
+
+async function callGemini(prompt: string): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+
+  const res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 512 },
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gemini ${res.status}: ${err}`);
+  }
+
+  const data = await res.json();
+  const text: string =
+    data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  if (!text) throw new Error("Gemini returned an empty response");
+  return text.trim();
+}
 
 /* ── Split text into ~200-word chunks ─────────────────────── */
 function chunkByWords(text: string, wordsPerChunk = 200): string[] {
@@ -14,35 +44,32 @@ function chunkByWords(text: string, wordsPerChunk = 200): string[] {
 
 /* ── Main export ──────────────────────────────────────────── */
 export async function generateSummary(body: string): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
   const chunks = chunkByWords(body, 200);
 
   /* Short blog — single call */
   if (chunks.length === 1) {
-    const result = await model.generateContent(
+    return callGemini(
       `You are a professional blog editor for ThoughtNest, a premium blogging platform. ` +
         `Read the following blog post and write a compelling, engaging summary in exactly 200 words. ` +
         `Write in third person. Capture the key insights and make readers want to read the full post.\n\n` +
         `Blog post:\n${body}`
     );
-    return result.response.text().trim();
   }
 
-  /* Long blog — summarise each 200-word chunk in parallel, then consolidate */
+  /* Long blog — summarise each chunk in parallel, then consolidate */
   const chunkSummaries = await Promise.all(
-    chunks.map(async (chunk, i) => {
-      const r = await model.generateContent(
+    chunks.map((chunk, i) =>
+      callGemini(
         `You are a professional blog editor. ` +
           `This is part ${i + 1} of ${chunks.length} of a blog post. ` +
           `Summarise this part in 2-3 sentences. Be concise and capture the key point.\n\n` +
           `Part ${i + 1}:\n${chunk}`
-      );
-      return r.response.text().trim();
-    })
+      )
+    )
   );
 
   /* Final consolidation */
-  const result = await model.generateContent(
+  return callGemini(
     `You are a professional blog editor for ThoughtNest, a premium blogging platform. ` +
       `Below are summaries of each section of a blog post ` +
       `(the blog was split into ${chunks.length} parts of ~200 words each).\n\n` +
@@ -52,6 +79,4 @@ export async function generateSummary(body: string): Promise<string> {
       `Section summaries:\n` +
       chunkSummaries.map((s, i) => `Part ${i + 1}: ${s}`).join("\n\n")
   );
-
-  return result.response.text().trim();
 }
