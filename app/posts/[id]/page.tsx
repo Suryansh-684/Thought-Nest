@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { motion } from "framer-motion";
-import { ArrowLeft, Calendar, Pencil, Sparkles, User } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, Calendar, ChevronDown, Pencil, Sparkles, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import BookFlipReader from "@/components/BookFlipReader";
@@ -60,41 +60,197 @@ function ParallaxHero({ src, alt }: { src: string; alt: string }) {
 
   return (
     <div className="relative h-[420px] w-full overflow-hidden sm:h-[500px]">
-      {/* Image moves at 0.3x scroll speed */}
       <div
         className="absolute inset-0 scale-110"
         style={{ transform: `translateY(${offsetY * 0.3}px) scale(1.1)` }}
       >
         <Image src={src} alt={alt} fill className="object-cover" priority />
       </div>
-      {/* Bottom gradient fade to page bg */}
       <div className="absolute inset-0 bg-gradient-to-t from-[#0F0F1A] via-[#0F0F1A]/30 to-transparent" />
     </div>
   );
 }
 
-/* ── AI Summary box ─────────────────────────────────────────── */
-function AISummaryBox({ summary }: { summary: string }) {
-  return (
-    <motion.div
-      className="relative mb-10 overflow-hidden rounded-2xl border border-violet-500/20 bg-white/4 backdrop-blur-sm"
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.5, delay: 0.3, ease: [0.22, 1, 0.36, 1] as const }}
-    >
-      {/* Violet left accent bar */}
-      <div className="absolute left-0 top-0 h-full w-1 rounded-l-2xl bg-gradient-to-b from-violet-500 to-rose-500" />
+/* ── AI Summary Panel ───────────────────────────────────────── */
+/*
+ * Visible to ALL readers (not just author/admin).
+ * - If summary already exists in DB: show it immediately when expanded.
+ * - If summary is null: generate it on first expand, save to DB, then show.
+ * The blog body is chunked into 200-word parts server-side; each part is
+ * summarised and then consolidated into one final 200-word summary.
+ */
+function AISummaryPanel({
+  postId,
+  postBody,
+  initialSummary,
+}: {
+  postId: string;
+  postBody: string;
+  initialSummary: string | null;
+}) {
+  const supabase = createClient();
+  const [open, setOpen] = useState(false);
+  const [summary, setSummary] = useState<string | null>(initialSummary);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState("");
+  const [statusText, setStatusText] = useState("");
 
-      <div className="px-6 py-5 pl-8">
-        <div className="mb-3 flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-violet-400" />
-          <span className="text-xs font-semibold uppercase tracking-widest text-violet-400">
-            AI Summary
-          </span>
+  async function handleOpen() {
+    const next = !open;
+    setOpen(next);
+
+    // Already have a summary — nothing to do
+    if (!next || summary) return;
+
+    // Generate on first open
+    setGenerating(true);
+    setError("");
+
+    // Show chunking progress hint
+    const wordCount = postBody.trim().split(/\s+/).length;
+    const chunkCount = Math.ceil(wordCount / 200);
+    setStatusText(
+      chunkCount > 1
+        ? `Processing ${chunkCount} sections of ~200 words each…`
+        : "Generating summary…"
+    );
+
+    try {
+      const res = await fetch("/api/generate-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: postBody }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.summary) {
+        setError(data.error ?? "Failed to generate summary. Please try again.");
+        setGenerating(false);
+        setStatusText("");
+        return;
+      }
+
+      // Save to DB so future opens are instant
+      await supabase
+        .from("posts")
+        .update({ summary: data.summary })
+        .eq("id", postId);
+
+      setSummary(data.summary);
+    } catch (err) {
+      setError("Network error — " + String(err));
+    }
+
+    setGenerating(false);
+    setStatusText("");
+  }
+
+  return (
+    <div className="mb-10">
+      {/* Toggle button — always visible */}
+      <motion.button
+        onClick={handleOpen}
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.99 }}
+        className="flex w-full items-center justify-between rounded-2xl border border-violet-500/30 bg-violet-500/8 px-5 py-4 text-left transition-all hover:border-violet-400/50 hover:bg-violet-500/12"
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-500/20">
+            <Sparkles className="h-4 w-4 text-violet-400" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-violet-300">✨ AI Summary</p>
+            <p className="text-xs text-white/35">
+              {summary
+                ? "Tap to read the AI-generated summary"
+                : "Tap to generate a summary of this post"}
+            </p>
+          </div>
         </div>
-        <p className="text-sm italic leading-relaxed text-white/60">{summary}</p>
-      </div>
-    </motion.div>
+        <motion.div
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <ChevronDown className="h-4 w-4 text-violet-400" />
+        </motion.div>
+      </motion.button>
+
+      {/* Expandable content */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="relative rounded-b-2xl border border-t-0 border-violet-500/20 bg-[#1A1A2E]/80 px-5 py-5 backdrop-blur-sm">
+              {/* Violet left accent */}
+              <div className="absolute left-0 top-0 h-full w-1 rounded-bl-2xl bg-gradient-to-b from-violet-500 to-rose-500" />
+
+              <div className="pl-3">
+                {generating ? (
+                  <div className="flex flex-col items-center gap-3 py-6">
+                    {/* Animated processing indicator */}
+                    <div className="flex items-center gap-2">
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-violet-400/30 border-t-violet-400" />
+                      <span className="text-sm font-medium text-violet-300">
+                        Generating AI summary…
+                      </span>
+                    </div>
+                    {statusText && (
+                      <p className="text-xs text-white/35">{statusText}</p>
+                    )}
+                    {/* Chunk progress dots */}
+                    <div className="flex gap-1.5">
+                      {[0, 1, 2].map((i) => (
+                        <motion.span
+                          key={i}
+                          className="h-1.5 w-1.5 rounded-full bg-violet-400"
+                          animate={{ opacity: [0.3, 1, 0.3] }}
+                          transition={{
+                            duration: 1.2,
+                            repeat: Infinity,
+                            delay: i * 0.2,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : error ? (
+                  <div className="py-2">
+                    <p className="mb-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-400">
+                      {error}
+                    </p>
+                    <button
+                      onClick={() => { setSummary(null); setError(""); setOpen(false); setTimeout(() => handleOpen(), 50); }}
+                      className="text-xs text-violet-400 hover:underline"
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : summary ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35 }}
+                  >
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-violet-400/70">
+                      Summary · ~200 words
+                    </p>
+                    <p className="text-sm italic leading-relaxed text-white/65">
+                      {summary}
+                    </p>
+                  </motion.div>
+                ) : null}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -144,16 +300,16 @@ export default function PostDetailPage() {
     <div className="min-h-screen bg-[#0F0F1A]">
       <ReadingProgressBar />
 
-      {/* ── Hero image ── */}
+      {/* Hero image */}
       {post.image_url ? (
         <ParallaxHero src={post.image_url} alt={post.title} />
       ) : (
-        /* Spacer so content doesn't sit flush under navbar */
         <div className="h-16" />
       )}
 
-      {/* ── Content ── */}
+      {/* Content */}
       <div ref={contentRef} className="relative z-10 mx-auto max-w-3xl px-4 pb-24 sm:px-6">
+
         {/* Back link */}
         <motion.div
           initial={{ opacity: 0, x: -16 }}
@@ -170,7 +326,7 @@ export default function PostDetailPage() {
           </Link>
         </motion.div>
 
-        {/* ── Post header ── */}
+        {/* Post header */}
         <motion.header
           className="mb-10"
           initial={{ opacity: 0, y: 24 }}
@@ -202,7 +358,6 @@ export default function PostDetailPage() {
                   {post.users?.name ?? "Anonymous"}
                 </span>
               </div>
-
               <span className="flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />
                 {date}
@@ -224,19 +379,29 @@ export default function PostDetailPage() {
           </div>
         </motion.header>
 
-        {/* ── AI Summary ── */}
-        {post.summary && <AISummaryBox summary={post.summary} />}
+        {/* ── AI Summary Panel — visible to everyone ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.2 }}
+        >
+          <AISummaryPanel
+            postId={post.id}
+            postBody={post.body}
+            initialSummary={post.summary}
+          />
+        </motion.div>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.25 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
         >
           <BookFlipReader body={post.body} />
         </motion.div>
 
-        {/* ── Comments ── */}
+        {/* Comments */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
