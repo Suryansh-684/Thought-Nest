@@ -284,6 +284,7 @@ function CreatePostForm() {
     /* ── Step 2: generate summary ── */
     setStep("summarising");
     let summary: string | null = null;
+    let summaryFailed = false;
     try {
       const res = await fetch("/api/generate-summary", {
         method: "POST",
@@ -291,9 +292,15 @@ function CreatePostForm() {
         body: JSON.stringify({ body }),
       });
       const data = await res.json();
-      if (data.summary) summary = data.summary;
-    } catch {
-      /* non-fatal — publish without summary */
+      if (data.summary) {
+        summary = data.summary;
+      } else {
+        summaryFailed = true;
+        console.warn("[generate-summary] API returned no summary:", data);
+      }
+    } catch (err) {
+      summaryFailed = true;
+      console.warn("[generate-summary] fetch failed:", err);
     }
 
     /* ── Step 3: insert post ── */
@@ -312,7 +319,11 @@ function CreatePostForm() {
 
     /* ── Step 4: confetti + success state ── */
     setStep("success");
-    toast("Post published! 🎉", "success");
+    if (summaryFailed) {
+      toast("Post published — but AI summary failed. Check your GEMINI_API_KEY in Vercel env vars.", "info");
+    } else {
+      toast("Post published with AI summary! 🎉", "success");
+    }
     confetti({
       particleCount: 150,
       spread: 70,

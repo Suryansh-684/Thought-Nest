@@ -1,7 +1,7 @@
 /* ── Direct REST call to Gemini v1 ───────────────────────── */
 
 const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 const FALLBACK_SUMMARY =
   "This is an AI-generated summary of the blog. The content highlights key insights, important concepts, and valuable information presented in a clear and engaging manner.";

@@ -33,7 +33,7 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${playfairDisplay.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[#0F0F1A]">
+      <body className="min-h-full flex flex-col bg-[#0F0F1A]" suppressHydrationWarning>
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
